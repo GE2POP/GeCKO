@@ -172,7 +172,7 @@ if [ "${MAPPER}" = "minimap2" ] ; then
       mv ${OUTPUT_DIR}/${SAMPLE}_paired.sam ${OUTPUT_DIR}/${SAMPLE}_raw.sam
     fi
   else
-    minimap2 ${MAPPER_OPTIONS} -R $(echo "@RG\tID:${SAMPLE}\tPL:${TECHNOLOGY}\tSM:${SAMPLE}") -a ${REF_INDEX} ${FASTQ} > ${OUTPUT_DIR}/${SAMPLE}_raw.sam
+    minimap2 ${MAPPER_OPTIONS} --split-prefix ${SAMPLE} -R $(echo "@RG\tID:${SAMPLE}\tPL:${TECHNOLOGY}\tSM:${SAMPLE}") -a ${REF_INDEX} ${FASTQ} > ${OUTPUT_DIR}/${SAMPLE}_raw.sam
   fi
 fi
 
