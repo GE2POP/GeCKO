@@ -360,15 +360,7 @@ rule Clean_BedFile:
     threads: default_threads
     shell:
         """
-        sort -k1,1 -k2,2n {input} | awk 'BEGIN{{OFS="\t"; chr=0; start=0; end=0}}{{
-          if ($1==chr && $2<=end) {{
-            end=$3
-          }}
-          else {{
-            if(end !=0) {{print chr, start, end}} ;
-            chr=$1 ; start=$2 ; end=$3
-          }}
-        }} END{{if(end !=0) {{print chr, start, end}}}}' > {output}
+        bedtools sort -i {input} | bedtools merge -i - > {output}
         """
 
 
