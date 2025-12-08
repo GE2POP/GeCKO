@@ -1,0 +1,9 @@
+**/.cache/
+
+**/.fontconfig/
+
+**/__pycache__/
+*.pyc
+*.pyo
+
+.vscode/

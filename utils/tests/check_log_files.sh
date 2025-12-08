@@ -10,7 +10,7 @@ set -euo pipefail
 
 # ------- CONFIG ------- #
 
-configPath=$(dirname $0)"/CONFIG"
+configPath=$(dirname "$0")"/CONFIG"
 dirsFile=${configPath}/test_subfolders.txt
 
 
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]
         shift
         ;;
         -*|*)
-        echo -e "\nWARNING: $1 option is unknown and will be ignored.\n"
+        echo -e "\nWARNING: "$1" option is unknown and will be ignored.\n"
         shift
         ;;
     esac
@@ -36,17 +36,17 @@ done
 # -------- FUNCTIONS -------- #
 
 sourceDependencies(){
-    local geckoPath=$1
-    source ${geckoPath}/utils/utils.sh
+    local geckoPath="$1"
+    source "${geckoPath}/utils/utils.sh"
 }
 
 
 printLogInfo(){
-    local testDir=$1
-    for log in ${testDir}/slurm*out ; do
-        echo $log":"
-        grep -i "error" $log || true
-        grep '%' $log | tail -1 || true
+    local testDir="$1"
+    for log in "${testDir}"/slurm*out ; do
+        echo "$log:"
+        grep -i "error" "$log" || true
+        grep 'of.*steps.*(.*%)' "$log" | tail -1 || true
         echo -e "\n"
     done
 }
@@ -54,18 +54,18 @@ printLogInfo(){
 printAllTestsLogInfo(){
     echo -e "\n"
     for testDir in "${testDirs[@]}" ; do
-        printLogInfo ${testDir}
+        printLogInfo "${testDir}"
     done
 }
 
 
 # ---------- MAIN --------- #
 
-sourceDependencies $geckoPath
+sourceDependencies "$geckoPath"
 
 setErrorExitMsg
 
-importTestDirs $dirsFile
+importTestDirs "$dirsFile"
 
 printAllTestsLogInfo
 

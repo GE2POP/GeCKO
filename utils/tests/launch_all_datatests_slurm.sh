@@ -6,10 +6,10 @@
 set -euo pipefail
 
 module purge
-module load singularity/3.6.3
+#module load singularity/3.6.3
 
 # ------- CONFIG ------- #
-configPath=$(dirname $0)"/CONFIG"
+configPath=$(dirname "$0")"/CONFIG"
 dirsFile=${configPath}/test_subfolders.txt
 
 declare -A workflows
@@ -58,31 +58,31 @@ done
 # -------- FUNCTIONS -------- #
 
 sourceDependencies(){
-    local geckoPath=$1
-    source ${geckoPath}/utils/launching/launching_utils.sh
-    source ${geckoPath}/utils/utils.sh
+    local geckoPath="$1"
+    source "${geckoPath}/utils/launching/launching_utils.sh"
+    source "${geckoPath}/utils/utils.sh"
 }
 
 cleanLogs(){
-    dir=$1
+    dir="$1"
     echo "Removing ${dir} previous log files..."
-    rm -fr ${dir}/slurm*.out ${dir}/Logs_*Workflow
+    rm -fr "${dir}"/slurm*.out "${dir}"/Logs_*Workflow
 }
 
 cleanOutputs(){
-    dir=$1
+    dir="$1"
     echo "Removing ${dir} previous output files..."
-    rm -fr ${dir}/WORKFLOWS_OUTPUTS
+    rm -fr "${dir}/WORKFLOWS_OUTPUTS"
 }
 
 cleanOldFiles() {
-    local geckoPath=$1
-    local shouldCleanOutputs=$2
-    cd $geckoPath
+    local geckoPath="$1"
+    local shouldCleanOutputs="$2"
+    cd "$geckoPath"
     for dir in "${testDirs[@]}" ; do
-        cleanLogs $dir
-        if [ $shouldCleanOutputs == "TRUE" ] ; then
-            cleanOutputs $dir
+        cleanLogs "$dir"
+        if [ "$shouldCleanOutputs" == "TRUE" ] ; then
+            cleanOutputs "$dir"
         fi
     done
     cdSilent -
@@ -90,55 +90,55 @@ cleanOldFiles() {
 
 
 sbatchRunGecko(){
-    local runGeCKO=$1
-    local workflowName=$2
-    local workflowPrefix=$3
-    local partition=$4
+    local runGeCKO="$1"
+    local workflowName="$2"
+    local workflowPrefix="$3"
+    local partition="$4"
     shift 4
     local extraOptions=("$@")
     
-    runGeCKOcmd="sbatch --partition=${partition} --wrap=\"${runGeCKO} --workflow ${workflowName} --config-file CONFIG/config_${workflowName}.yml --cluster-profile CONFIG/${workflowPrefix}_CLUSTER_PROFILE_SLURM ${extraOptions}\""
-    echo $runGeCKOcmd
-    eval $runGeCKOcmd
+    runGeCKOcmd="sbatch --partition=$partition --wrap=\"${runGeCKO} --workflow ${workflowName} --config-file CONFIG/config_${workflowName}.yml --cluster-profile CONFIG/${workflowPrefix}_CLUSTER_PROFILE_SLURM_ACCOUNT ${extraOptions}\""
+    echo "$runGeCKOcmd"
+    eval "$runGeCKOcmd"
 }
 
 sbatchRunGeckoTest(){
-    local runGeCKO=$1
-    local workflowName=$2
-    local workflowPrefix=$3
-    local partition=$4
-    sbatchRunGecko $runGeCKO $workflowName $workflowPrefix $partition "--jobs 20"
+    local runGeCKO="$1"
+    local workflowName="$2"
+    local workflowPrefix="$3"
+    local partition="$4"
+    sbatchRunGecko "$runGeCKO" "$workflowName" "$workflowPrefix" "$partition" "--jobs 20"
 }
 
 
 runTest(){
-    local geckoPath=$1
-    local testDir=$2
-    local workflowName=$3
-    local workflowPrefix=$4
-    local partition=$5
+    local geckoPath="$1"
+    local testDir="$2"
+    local workflowName="$3"
+    local workflowPrefix="$4"
+    local partition="$5"
 
     runGeCKO=${geckoPath}/runGeCKO.sh
     
-    cd ${testDir}
+    cd "${testDir}"
     echo -e "\n"${testDir}":"
-    sbatchRunGeckoTest ${runGeCKO} ${workflowName} ${workflowPrefix} ${partition}
+    sbatchRunGeckoTest "${runGeCKO}" "${workflowName}" "${workflowPrefix}" "${partition}"
     cdSilent -
 }
 
 countMotifsInPath(){
-    path=$1
+    path="$1"
     motifs="$2"
-    nb_motifs=$(echo $path | grep -oE "${motifs}" | wc -l || true)
-    echo $nb_motifs
+    nb_motifs=$(echo "$path" | grep -oE "${motifs}" | wc -l || true)
+    echo "$nb_motifs"
 }
 
 getTestWorkflow(){
-    local testDir=$1
+    local testDir="$1"
     local workflow
     for workflow in "${!workflows[@]}" ; do
-        if grep -q $workflow <<< $testDir ; then
-            echo $workflow
+        if grep -q "$workflow" <<< "$testDir" ; then
+            echo "$workflow"
             return 0
         fi
     done
@@ -147,15 +147,15 @@ getTestWorkflow(){
 
 
 runTests(){
-    local geckoPath=$1
-    local partition=$2
+    local geckoPath="$1"
+    local partition="$2"
 
     for testDir in "${testDirs[@]}"; do
-        nb_motifs=$(countMotifsInPath $testDir $workflowMotifs)
-        if [ $nb_motifs == 1 ] ; then
-            testWorkflow=$(getTestWorkflow $testDir)
+        nb_motifs=$(countMotifsInPath "$testDir" "$workflowMotifs")
+        if [ "$nb_motifs" == 1 ] ; then
+            testWorkflow=$(getTestWorkflow "$testDir")
             read -r workflowName workflowPrefix <<< "${workflows[$testWorkflow]}"
-            runTest $geckoPath $testDir $workflowName $workflowPrefix $partition
+            runTest "$geckoPath" "$testDir" "$workflowName" "$workflowPrefix" "$partition"
         else
             echo "Warning: ambiguous workflow type for ${testDir}. Skipping this test."
         fi
@@ -165,17 +165,17 @@ runTests(){
 
 # ---------- MAIN --------- #
 
-sourceDependencies $geckoPath
+sourceDependencies "$geckoPath"
 
 setErrorExitMsg
 
-importTestDirs $dirsFile
+importTestDirs "$dirsFile"
 
-cleanOldFiles $geckoPath $shouldCleanOutputs
+cleanOldFiles "$geckoPath" "$shouldCleanOutputs"
 
 dlImageSylabs "library://ge2pop_gecko/gecko/gecko:${imageVersion}" "utils/singularity_image/GeCKO.sif"
 
-runTests $geckoPath $partition
+runTests "$geckoPath" "$partition"
 
 
 # declare -A testFolders
