@@ -7,3 +7,5 @@
 *.pyo
 
 .vscode/
+READ_MAPPING/EXAMPLE/REFERENCE/Reference.fasta.*
+utils/singularity_image

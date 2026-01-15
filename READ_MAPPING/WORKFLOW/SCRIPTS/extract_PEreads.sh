@@ -35,6 +35,12 @@ do
     shift # past argument
     shift # past value
     ;;
+    --merge_step)
+    MERGE_STEP="$2"
+    shift
+    shift
+    ;;
+
   esac
 done
 
@@ -50,13 +56,20 @@ if [[ ! -z "$BAM" && ! "$BAM" = /* ]] ; then
   BAM=$(readlink -f $BAM) ;
 fi
 
+MERGE_STEP=${MERGE_STEP:-100}
+
 # clean intermediate files when the script exits
 clean_intermediate_files() {
   rm ${OUTPUT_DIR}/${SAMPLE}*_PP* ${OUTPUT_DIR}/${SAMPLE}*_UP*
 }
 trap 'clean_intermediate_files' EXIT
 
-#get reads that are mapped -F4 and unproperly paired (UP) -F2
+#Erreurs / problèmes avérés dans ce script :
+#	•	samtools view -F4 -F2 : l’option -F ne s’additionne pas ainsi ; si elle est répétée, la dernière occurrence écrase la précédente. Donc vous ne filtrez pas 4|2 comme attendu (il faudrait un seul masque).
+#	•	sed 's/\s/.../' : \s n’est pas une classe “whitespace” valide en sed standard (et même GNU sed en regex de base). Vos substitutions ne font donc pas ce que vous pensez.
+#	•	Avec set -e, vos rm sur des globs potentiellement vides (notamment dans clean_intermediate_files() via le trap, et rm ..._tmp_zone_*.bam) peuvent faire échouer le script si aucun fichier ne matche (le glob reste littéral et rm renvoie une erreur).
+
+#get reads that are mapped -F4 and unproperly paired (UP) -F2 => -F 6 ??
 samtools view -F4 -F2 -b ${BAM} > ${OUTPUT_DIR}/${SAMPLE}_UP.bam
 samtools index -c ${OUTPUT_DIR}/${SAMPLE}_UP.bam
 
@@ -71,32 +84,60 @@ samtools fixmate -m ${OUTPUT_DIR}/${SAMPLE}_UP_extract_sorted.bam  ${OUTPUT_DIR}
 picard SamToFastq -I ${OUTPUT_DIR}/${SAMPLE}_UP_extract_sorted_fixed.bam  -F ${OUTPUT_DIR}/${SAMPLE}_UP_extract.R1.fastq -F2 ${OUTPUT_DIR}/${SAMPLE}_UP_extract.R2.fastq -FU ${OUTPUT_DIR}/${SAMPLE}_UP_extract.U.fastq -VALIDATION_STRINGENCY SILENT
 
 #handle the PP reads
-echo -n ""> ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.bam
-echo -n ""> ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.list
 i=0
+j=0
+
+FINAL_BAM="${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.bam"
+ZONE_LIST="${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_zone.list"
+BATCH_LIST="${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_batch.list"
+
+# Clean slate
+rm -f "${FINAL_BAM}"
+: > "${ZONE_LIST}"
+: > "${BATCH_LIST}"
+
 # If two reads are on different zone they will be placed in the U.fastq; placing them in R1 and R2 will otherwise lead to unproperly paired tag in the subref mapping
 # extract R1 R2 and U for each zone provided in the bed file and concatenate those fastq files
 while read line; do
   zone=$(echo $line | sed -e 's/\s/:/' | sed -e 's/\s/-/' | sed -e 's/\r//')
-  samtools view -b ${OUTPUT_DIR}/${SAMPLE}_PP.bam $zone > ${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_${i}.bam
-  echo ${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_${i}.bam >> ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.list
+  tmp_bam="${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_zone_${i}.bam"
+  samtools view -b ${OUTPUT_DIR}/${SAMPLE}_PP.bam $zone > ${tmp_bam}
+  echo ${tmp_bam} >> ${ZONE_LIST}
   i=$(expr $i + 1)
-  if(( $i == 10 )); then
+  if(( $i == $MERGE_STEP )); then
+    # merge current bam zones (of this batch) in a single bam added to the list to be merged
+    batch_bam="${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_batch_${j}.bam"
+    samtools merge -c -p --no-PG ${batch_bam} -b ${ZONE_LIST}
     # -c option to keep RG group (genotype name) unchanged; otherwise add a random suffix for each file to be merged
-    samtools merge -c -p --no-PG ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_tmp.bam -b ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.list
-    mv  ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_tmp.bam ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.bam
-    rm  ${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_*.bam
-
+    echo ${batch_bam} >> ${BATCH_LIST}
+    # reset for next BATCH
+    rm  ${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_zone_*.bam
     i=0
-    echo ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.bam > ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.list
+    : > "${ZONE_LIST}"
+    j=$(( j + 1 ))
   fi
 done < ${BED_FILE}
 #handle last regions
 if(( $i > 0 )); then
-  samtools merge  -c -p --no-PG ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_tmp.bam -b ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.list
-  mv  ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_tmp.bam ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.bam
-  rm  ${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_*.bam
+  batch_bam="${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_batch_${j}.bam"
+  samtools merge -c -p --no-PG ${batch_bam} -b ${ZONE_LIST}
+  echo ${batch_bam} >> ${BATCH_LIST}
+  rm  ${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_zone_*.bam
 fi
+
+# Final merge of all intermediate batch BAMs
+n_batches=$(wc -l < "${BATCH_LIST}" | tr -d ' ')
+if (( n_batches == 0 )); then
+  echo "WARNING: no intermediate BAMs created (check BED_FILE and input BAM)." >&2
+  # nothing to merge; leave FINAL_BAM absent
+elif (( n_batches == 1 )); then
+  # avoid an unnecessary merge pass
+  only_bam=$(head -n 1 "${BATCH_LIST}")
+  mv -f "${only_bam}" "${FINAL_BAM}"
+else
+  samtools merge -c -p --no-PG "${FINAL_BAM}" -b "${BATCH_LIST}"
+fi
+
 
 # Dedup and fixmate
 samtools sort -n ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge.bam > ${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_nameSorted.bam

@@ -425,7 +425,7 @@ rule Extract_PairedEndReads:
         GeCKO_image
     threads: default_threads
     shell:
-        "{scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir}"
+        "{scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --merge_step 500"
 
 
 rule Remapping_PairedEndExtractedFastqs:
