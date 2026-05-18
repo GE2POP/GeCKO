@@ -425,7 +425,14 @@ rule Extract_PairedEndReads:
         GeCKO_image
     threads: default_threads
     shell:
-        "{scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --merge_step 500"
+     r"""
+       merge_step=$(awk 'END {{
+         s = int(sqrt(NR));
+         if (s > 1000) s = 1000;
+         print s;
+       }}' {input.bed:q})
+       {scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --merge_step "$merge_step"
+       """
 
 
 rule Remapping_PairedEndExtractedFastqs:

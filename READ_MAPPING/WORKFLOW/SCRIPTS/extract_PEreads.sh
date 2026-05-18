@@ -1,8 +1,6 @@
 #!/bin/bash
 
-### Version pour tester avec samtools sort -n au lieu de sort (PP)
-
-#{scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir}
+#{scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --merge_step "$merge_step"
 
 
 set -e -o pipefail
@@ -56,18 +54,13 @@ if [[ ! -z "$BAM" && ! "$BAM" = /* ]] ; then
   BAM=$(readlink -f $BAM) ;
 fi
 
-MERGE_STEP=${MERGE_STEP:-100}
+MERGE_STEP=${MERGE_STEP:-100} #max number of zones per batch
 
 # clean intermediate files when the script exits
 clean_intermediate_files() {
   rm ${OUTPUT_DIR}/${SAMPLE}*_PP* ${OUTPUT_DIR}/${SAMPLE}*_UP*
 }
 trap 'clean_intermediate_files' EXIT
-
-#Erreurs / problèmes avérés dans ce script :
-#	•	samtools view -F4 -F2 : l’option -F ne s’additionne pas ainsi ; si elle est répétée, la dernière occurrence écrase la précédente. Donc vous ne filtrez pas 4|2 comme attendu (il faudrait un seul masque).
-#	•	sed 's/\s/.../' : \s n’est pas une classe “whitespace” valide en sed standard (et même GNU sed en regex de base). Vos substitutions ne font donc pas ce que vous pensez.
-#	•	Avec set -e, vos rm sur des globs potentiellement vides (notamment dans clean_intermediate_files() via le trap, et rm ..._tmp_zone_*.bam) peuvent faire échouer le script si aucun fichier ne matche (le glob reste littéral et rm renvoie une erreur).
 
 #get reads that are mapped -F4 and unproperly paired (UP) -F2 => -F 6 ??
 samtools view -F4 -F2 -b ${BAM} > ${OUTPUT_DIR}/${SAMPLE}_UP.bam
@@ -99,7 +92,7 @@ rm -f "${FINAL_BAM}"
 # If two reads are on different zone they will be placed in the U.fastq; placing them in R1 and R2 will otherwise lead to unproperly paired tag in the subref mapping
 # extract R1 R2 and U for each zone provided in the bed file and concatenate those fastq files
 while read line; do
-  zone=$(echo $line | sed -e 's/\s/:/' | sed -e 's/\s/-/' | sed -e 's/\r//')
+  zone=$(echo $line | tr -d '\r' | awk '{print $1 ":" $2 "-" $3}')
   tmp_bam="${OUTPUT_DIR}/${SAMPLE}_PP_extract_tmp_zone_${i}.bam"
   samtools view -b ${OUTPUT_DIR}/${SAMPLE}_PP.bam $zone > ${tmp_bam}
   echo ${tmp_bam} >> ${ZONE_LIST}
