@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# {scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --max_merge_inputs "$max_merge_inputs"
+# {scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --max_merge_inputs "$max_merge_inputs" --picard_mem "$picard_mem"
 
 
 set -e -o pipefail
@@ -37,6 +37,10 @@ do
     MAX_MERGE_INPUTS="$2"
     shift
     shift
+    ;;
+    --picard_mem)
+    PICARD_MEM="$2"
+    shift 2
     ;;
   esac
 done
@@ -176,7 +180,7 @@ samtools index -c "${OUTPUT_DIR}/${SAMPLE}_PP.bam"
 samtools view -L "${BED_FILE}" -b "${OUTPUT_DIR}/${SAMPLE}_UP.bam" > "${OUTPUT_DIR}/${SAMPLE}_UP_extract.bam"
 samtools sort -n "${OUTPUT_DIR}/${SAMPLE}_UP_extract.bam" -o "${OUTPUT_DIR}/${SAMPLE}_UP_extract_sorted.bam" ;
 samtools fixmate -m "${OUTPUT_DIR}/${SAMPLE}_UP_extract_sorted.bam"  "${OUTPUT_DIR}/${SAMPLE}_UP_extract_sorted_fixed.bam" ;
-picard SamToFastq -I "${OUTPUT_DIR}/${SAMPLE}_UP_extract_sorted_fixed.bam"  -F "${OUTPUT_DIR}/${SAMPLE}_UP_extract.R1.fastq" -F2 "${OUTPUT_DIR}/${SAMPLE}_UP_extract.R2.fastq" -FU "${OUTPUT_DIR}/${SAMPLE}_UP_extract.U.fastq" -VALIDATION_STRINGENCY SILENT
+picard -Xmx"${PICARD_MEM}m" SamToFastq -I "${OUTPUT_DIR}/${SAMPLE}_UP_extract_sorted_fixed.bam"  -F "${OUTPUT_DIR}/${SAMPLE}_UP_extract.R1.fastq" -F2 "${OUTPUT_DIR}/${SAMPLE}_UP_extract.R2.fastq" -FU "${OUTPUT_DIR}/${SAMPLE}_UP_extract.U.fastq" -VALIDATION_STRINGENCY SILENT
 
 
 #handle the PP reads
@@ -242,7 +246,7 @@ samtools view "${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_nameSorted.bam" | uniq >
 samtools fixmate -m "${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_nameSorted_uniq.sam"  "${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_fixed.bam"
 
 # Transform the bam into fastq
-picard SamToFastq -I "${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_fixed.bam" -F "${OUTPUT_DIR}/${SAMPLE}_PP_extract_R1.fastq" -F2 "${OUTPUT_DIR}/${SAMPLE}_PP_extract_R2.fastq" -FU "${OUTPUT_DIR}/${SAMPLE}_PP_extract_U.fastq" -VALIDATION_STRINGENCY SILENT
+picard -Xmx"${PICARD_MEM}m" SamToFastq -I "${OUTPUT_DIR}/${SAMPLE}_PP_extract_merge_fixed.bam" -F "${OUTPUT_DIR}/${SAMPLE}_PP_extract_R1.fastq" -F2 "${OUTPUT_DIR}/${SAMPLE}_PP_extract_R2.fastq" -FU "${OUTPUT_DIR}/${SAMPLE}_PP_extract_U.fastq" -VALIDATION_STRINGENCY SILENT
 
 
 # If two reads are properly paired in different zone we will have to reads with the same name in U.fastq (/1 and /2 are lost by samtools -view extraction when done one zone at a time)
@@ -261,7 +265,7 @@ if (( ${nb_dup} > 0 )); then
   samtools view -L "${BED_FILE}" -N "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.list" -b "${BAM}" > "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.bam"
   samtools sort -n "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.bam" -o "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup_sorted.bam"
   samtools fixmate -m "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup_sorted.bam"  "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup_sorted_fixed.bam"
-  picard SamToFastq -I "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup_sorted_fixed.bam"  -F "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.R1.fastq" -F2 "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.R2.fastq" -FU "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.U.fastq" -VALIDATION_STRINGENCY SILENT
+  picard -Xmx"${PICARD_MEM}m" SamToFastq -I "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup_sorted_fixed.bam"  -F "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.R1.fastq" -F2 "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.R2.fastq" -FU "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.U.fastq" -VALIDATION_STRINGENCY SILENT
 
   # merge fastq files containing PP_U read
   cat "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.U.fastq" "${OUTPUT_DIR}/${SAMPLE}_PP_extract_U_nodup.fastq" "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.R1.fastq" "${OUTPUT_DIR}/${SAMPLE}_PP_U_dup.R2.fastq" > "${OUTPUT_DIR}/${SAMPLE}_PP_extract_U.fastq"

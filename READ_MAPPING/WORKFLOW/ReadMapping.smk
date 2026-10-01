@@ -3,10 +3,13 @@
 import os,sys,glob
 from itertools import compress
 from datetime import datetime
+from typing import Any
 
 default_threads = 1 #this will be erased by the user's specifications for each rule in the profile yaml
 
 WF="READ_MAPPING"
+PICARD_MEMORY_RESERVE_MB = 2048
+PICARD_MIN_MEMORY_MB = 4096
 
 ####################   DEFINE CONFIG VARIABLES BASED ON CONFIG FILE   ####################
 
@@ -142,6 +145,17 @@ def find_latest_info_file(directory):
     latest_file = max(files, key=os.path.getctime)
     return latest_file
 
+def get_picard_mem_mb(wildcards, resources):
+    """Return the Picard JVM heap size in MB."""
+    mem_mb = getattr(resources, "mem_mb", PICARD_MIN_MEMORY_MB)
+
+    if mem_mb < PICARD_MIN_MEMORY_MB:
+        raise ValueError(
+            f"Picard requires at least {PICARD_MIN_MEMORY_MB} MB of memory."
+        )
+
+    return mem_mb - PICARD_MEMORY_RESERVE_MB
+
 
 ### PIPELINE ###
 ruleorder: MarkDuplicates_Bams > Filter_Bams
@@ -195,12 +209,12 @@ rule Mapping_PairedEndFastqs:
         extra_mapper_options = config["EXTRA_MAPPER_OPTIONS"],
         technology = config["SEQUENCING_TECHNOLOGY"],
         picard_markduplicates_options = config["PICARD_MARKDUPLICATES_OPTIONS"],
-        picard_markduplicates_java_options = config["PICARD_MARKDUPLICATES_JAVA_OPTIONS"]
+        picard_mem_mb=get_picard_mem_mb
     shell:
         "{scripts_dir}/mapping.sh --paired_end --fastq_R1 \"{input.fastq_paired_R1}\" --fastq_R2 \"{input.fastq_paired_R2}\" "
         "--ref {input.ref} --mapper {params.mapper} --mapper_options \"{params.extra_mapper_options}\" --technology \"{params.technology}\" "
         "--output_dir {bams_dir} --sample {wildcards.base} --MD_options \"{params.picard_markduplicates_options}\" "
-        "--MD_java_options \"{params.picard_markduplicates_java_options}\" --reports_dir {bams_reports_dir} --umi {dedupUMI}"
+        "--picard_mem {params.picard_mem_mb} --reports_dir {bams_reports_dir} --umi {dedupUMI}"
 
 
 
@@ -224,12 +238,12 @@ rule Mapping_SingleEndFastqs:
         extra_mapper_options = config["EXTRA_MAPPER_OPTIONS"],
         technology = config["SEQUENCING_TECHNOLOGY"],
         picard_markduplicates_options = config["PICARD_MARKDUPLICATES_OPTIONS"],
-        picard_markduplicates_java_options = config["PICARD_MARKDUPLICATES_JAVA_OPTIONS"]
+        picard_mem_mb=get_picard_mem_mb
     shell:
         "{scripts_dir}/mapping.sh --single_end --fastq \"{input.fastq_single}\" "
         "--ref {input.ref} --mapper {params.mapper} --mapper_options \"{params.extra_mapper_options}\" --technology \"{params.technology}\" "
         "--output_dir {bams_dir} --sample {wildcards.base} --MD_options \"{params.picard_markduplicates_options}\" "
-        "--MD_java_options \"{params.picard_markduplicates_java_options}\" --reports_dir {bams_reports_dir} --umi {dedupUMI}"
+        "--picard_mem {params.picard_mem_mb} --reports_dir {bams_reports_dir} --umi {dedupUMI}"
 
 
 rule Stats_Bams:
@@ -254,10 +268,18 @@ rule MarkDuplicates_Bams:
         GeCKO_image
     params:
         picard_markduplicates_options = config["PICARD_MARKDUPLICATES_OPTIONS"],
-        picard_markduplicates_java_options = config["PICARD_MARKDUPLICATES_JAVA_OPTIONS"]
+        picard_mem_mb=get_picard_mem_mb
     threads: default_threads
     shell:
-        "picard {params.picard_markduplicates_java_options} MarkDuplicates -I {input} -O {output.MD_bam} -VALIDATION_STRINGENCY SILENT {params.picard_markduplicates_options} -REMOVE_DUPLICATES TRUE -M {output.metrics}"
+        """
+        picard -Xmx{params.picard_mem_mb}m MarkDuplicates \
+            -I {input} \
+            -O {output.MD_bam} \
+            -VALIDATION_STRINGENCY SILENT \
+            {params.picard_markduplicates_options} \
+            -REMOVE_DUPLICATES TRUE \
+            -M {output.metrics}
+        """
 
 
 rule DedupUMI_Bams:
@@ -423,6 +445,8 @@ rule Extract_PairedEndReads:
         tmp_extracted_fastq_unpaired = temp(subbams_dir+"/{base}_extract.U.fastq.gz")
     singularity:
         GeCKO_image
+    params:
+        picard_mem_mb=get_picard_mem_mb
     threads: default_threads
     shell:
         r"""
@@ -430,7 +454,7 @@ rule Extract_PairedEndReads:
         if (( max_merge_inputs > 512 )); then
           max_merge_inputs=512
         fi
-        {scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --max_merge_inputs "$max_merge_inputs"
+        {scripts_dir}/extract_PEreads.sh --bam {input.bams} --sample {wildcards.base} --bed_file {input.bed} --output_dir {subbams_dir} --max_merge_inputs "$max_merge_inputs" --picard_mem {params.picard_mem_mb}
         """
 
 
@@ -456,13 +480,13 @@ rule Remapping_PairedEndExtractedFastqs:
         extra_mapper_options = config["EXTRA_MAPPER_OPTIONS"],
         technology = config["SEQUENCING_TECHNOLOGY"],
         picard_markduplicates_options = config["PICARD_MARKDUPLICATES_OPTIONS"],
-        picard_markduplicates_java_options = config["PICARD_MARKDUPLICATES_JAVA_OPTIONS"]
+        picard_mem_mb=get_picard_mem_mb
     threads: default_threads
     shell:
         "{scripts_dir}/mapping.sh --paired_end --fastq_R1 \"{input.fastq_paired_R1}\" --fastq_R2 \"{input.fastq_paired_R2}\" --fastq_U \"{input.fastq_unpaired}\" "
         "--ref {input.subref} --mapper {params.mapper} --mapper_options \"{params.extra_mapper_options}\" --technology \"{params.technology}\" "
         "--output_dir {subbams_dir} --sample {wildcards.base} --MD_options \"{params.picard_markduplicates_options}\" "
-        "--MD_java_options \"{params.picard_markduplicates_java_options}\" --reports_dir {subbams_reports_dir} --umi {dedupUMI}"
+        "--picard_mem {params.picard_mem_mb} --reports_dir {subbams_reports_dir} --umi {dedupUMI}"
 
 
 rule Extract_SingleEndReads:
@@ -476,9 +500,19 @@ rule Extract_SingleEndReads:
         GeCKO_image
     threads: default_threads
     shell:
-        "samtools view -F 4 -b -L {input.bed} {input.bams} > {output.tmp_extract_bams} ;"
-        "picard SamToFastq -I {output.tmp_extract_bams} -F {subbams_dir}/{wildcards.base}_extract.fastq -VALIDATION_STRINGENCY SILENT ;"
-        "gzip {subbams_dir}/{wildcards.base}_extract.fastq"
+        """
+        if (( {resources.mem_mb} < 4096 )); then
+            echo "Error: Picard MarkDuplicates requires at least 4096 MB of memory." >&2
+            exit 1
+        fi
+
+        PICARD_MEM=$(( {resources.mem_mb} - 2048 ))
+
+        samtools view -F 4 -b -L {input.bed} {input.bams} > {output.tmp_extract_bams} ;
+        picard -Xmx${{PICARD_MEM}}m SamToFastq -I {output.tmp_extract_bams} -F {subbams_dir}/{wildcards.base}_extract.fastq -VALIDATION_STRINGENCY SILENT ;
+        gzip {subbams_dir}/{wildcards.base}_extract.fastq
+        """
+        
 
 
 rule Remapping_SingleEndExtractedFastqs:
@@ -499,13 +533,13 @@ rule Remapping_SingleEndExtractedFastqs:
         extra_mapper_options = config["EXTRA_MAPPER_OPTIONS"],
         technology = config["SEQUENCING_TECHNOLOGY"],
         picard_markduplicates_options = config["PICARD_MARKDUPLICATES_OPTIONS"],
-        picard_markduplicates_java_options = config["PICARD_MARKDUPLICATES_JAVA_OPTIONS"]
+        picard_mem_mb=get_picard_mem_mb
     threads: default_threads
     shell:
         "{scripts_dir}/mapping.sh --single_end --fastq \"{input.fastq_single}\" "
         "--ref {input.subref} --mapper {params.mapper} --mapper_options \"{params.extra_mapper_options}\" --technology \"{params.technology}\" "
         "--output_dir {subbams_dir} --sample {wildcards.base} --MD_options \"{params.picard_markduplicates_options}\" "
-        "--MD_java_options \"{params.picard_markduplicates_java_options}\" --reports_dir {subbams_reports_dir} --umi {dedupUMI}"
+        "--picard_mem {params.picard_mem_mb} --reports_dir {subbams_reports_dir} --umi {dedupUMI}"
 
 
 rule Stats_Subbams:

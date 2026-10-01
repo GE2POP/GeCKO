@@ -8,7 +8,7 @@
 ## Provide here the default resources ('partition' and/or 'mem_mb') for all the steps
 # The 'mem_mb' value should be an integer (representing an amount of megabytes = Mb of RAM) and will be passed to the --mem-per-cpu sbatch option when submitting jobs
 default-resources:
-  - mem_mb=2000
+  - mem_mb=5000
   - partition="cpu-dedicated"
   - account="dedicated-cpu@cirad-normal"
   - time="1:00:00"
@@ -17,7 +17,6 @@ default-resources:
 ## Set resources ('partition' and/or 'mem_mb') for specific steps
 set-resources:
   - Mapping_SingleEndFastqs:mem_mb=5000
-  - Remapping_SingleEndExtractedFastqs:mem_mb=5000
 
 
 

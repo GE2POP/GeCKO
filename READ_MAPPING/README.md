@@ -102,7 +102,6 @@ This file is used to pass all the information and tools parameters that will be 
 - *SEQUENCING_TECHNOLOGY:*&nbsp;&nbsp;&nbsp;The name of the sequencing technology (eg: "ILLUMINA"), which will appear in the reads names after mapping: 'PL:{SEQUENCING_TECHNOLOGY}')  
 - *EXTRA_MAPPER_OPTIONS:*&nbsp;&nbsp;&nbsp;Any list of options you would like to pass to the mapper command. Be careful to provide them between quotes. 
 - *PICARD_MARKDUPLICATES_OPTIONS:*&nbsp;&nbsp;&nbsp;Any list of options you would like to pass to the 'picard MarkDuplicates' command. Be careful to provide them between quotes.  
-- *PICARD_MARKDUPLICATES_JAVA_OPTIONS:*&nbsp;&nbsp;&nbsp;Java options to pass to the 'picard MarkDuplicates' command. Eg: "-Xmx4G".  
 - *SAMTOOLS_INDEX_OPTIONS:*&nbsp;&nbsp;&nbsp;Any list of options you would like to pass to the 'samtools index' command. Be careful to provide them between quotes. The "-c" option is already included.
 
 **BAM FILTERING**
@@ -257,5 +256,3 @@ Name, description and tools used for each of the snakemake workflow rules:
 
 
 <!-- ![](https://github.com/GE2POP/GeCKO/blob/main/readme_img/ReadMapping_Workflow.jpg?raw=true) -->
-
-
